@@ -2,7 +2,7 @@
   "id": "m240_track_day",
   "title": "Track Day Mode",
   "description": "One screen for a track day: tyres, oil temperature + pressure, coolant, gearbox, intake and charge air, fuel, ethanol (MHD flex fuel), boost, HPFP, AFR and knock",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "vendor": "custom",
   "loggingId": "OAB1",
   "iconGlyph": "flag",

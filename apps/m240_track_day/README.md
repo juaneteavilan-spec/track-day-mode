@@ -57,7 +57,7 @@ Una sola escala para todo el tablero:
 
 Cuando un dato pasa a **rojo**, todo su recuadro se tiñe de rojo (además de la alerta arriba), para verlo de reojo.
 
-Cada recuadro lleva un **icono** al estilo de los testigos de BMW (aceitera, termómetro, engranaje, turbo, bomba de combustible, gota con "E", rayo para el knock), dibujado con las formas del kit en `icons.js` (el kit no carga imágenes). El carro del panel de llantas es una silueta del G42 vista desde arriba, con las llantas (textura de banda) dentro de la carrocería; al lado de cada llanta, solo su presión, su temperatura y "inflate cold".
+Cada recuadro lleva un **icono** al estilo de los testigos de BMW (aceitera, termómetro, engranaje, turbo, bomba de combustible, gota con "E", rayo para el knock), dibujado con las formas del kit en `icons.js` (el kit no carga imágenes). El carro del panel de llantas es una silueta detallada del G42 vista desde arriba (riñones, faros, capó con sus pliegues, techo, caderas traseras y stops en L), dibujada con curvas una sola vez y guardada en caché; las llantas van por fuera de la carrocería, en el color de su temperatura; al lado de cada llanta, solo su presión, su temperatura y "inflate cold".
 
 Los recuadros no llevan las franjas M: van una sola vez, a la izquierda del título **"Track Day Mode"**, más grande y en negrita. Ese título lo dibuja el kit en la franja del iDrive; para eso el kit tiene una opción nueva, `config.header` en `app.json` (`size`, `bold`, `stripes`), en `kit/runtime/gauges.js` (headerCompact) y `kit/runtime/display.js`. Solo la usa esta app: las demás apps del repo se ven igual.
 

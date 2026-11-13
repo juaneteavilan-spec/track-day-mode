@@ -61,8 +61,15 @@ const UNIT_READS = [
     ['oilP', 1], ['boost', 1], ['boostTarget', 1], ['hpfp', 1], ['hpfpTarget', 1], ['lambda', 1], ['lambdaTarget', 1], ['knock', 1],
     ['chargeAir', 2], ['iat', 3], ['gearbox', 4], ['fuelT', 8], ['ethanol', 8],
 ];
-/** A unit value older than this is shown as no data. */
-const STALE_MS = 8000;
+const EVERY = {};
+UNIT_READS.forEach(([k, n]) => { EVERY[k] = n; });
+/**
+ * A unit value is shown as no data once it is older than 3 of its own read intervals (the slow ones,
+ * read every 8th round, come back only every several seconds), at least STALE_MS, at most STALE_MAX_MS.
+ */
+const STALE_MS = 8000, STALE_MAX_MS = 30000;
+/** Header alerts shown at most: past it, the last one says how many more (the app's name stays). */
+const MAX_BADGES = 3;
 
 const newSessionData = () => ({ start: Date.now(), used: Date.now(), peak: {}, min: {}, cold: {} });
 
@@ -171,7 +178,8 @@ mgu.run({
         const serial = (fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
         const rd = new DidReader({ physical: (...a) => serial(() => link.physical(...a)) }, { ecu: dme.ecu });
         const unit = {}, unitT = {}, fail = {}, tryT = {};
-        let baro = 1.013, baroT = 0, shownAt = 0, round = 0, pollTimer = null;
+        // roundMs: how long one round of reads takes on this car (averaged), for how long a value stays fresh
+        let baro = 1.013, baroT = 0, shownAt = 0, round = 0, pollTimer = null, roundMs = 1000;
         /** Outside air pressure (bar), read again once a minute: absolute pressures minus it. */
         async function freshBaro() {
             if (Date.now() - baroT < 60000) return;
@@ -193,6 +201,7 @@ mgu.run({
             const onScreen = Date.now() - shownAt < 1500;
             if (onScreen && link.available) {
                 round++;
+                const t0 = Date.now();
                 try {
                     for (const [k, every] of UNIT_READS) {
                         if (round % every !== 0 || !(dme[k] || []).length) continue;
@@ -204,6 +213,8 @@ mgu.run({
                         fail[k] = 0; unit[k] = v; unitT[k] = Date.now(); lastCar = Date.now();
                     }
                 } catch (e) { log.warn('unit poll: ' + e); }
+                roundMs = roundMs * 0.8 + (Date.now() - t0 + 100) * 0.2;
+                if (round % 100 === 0) log.info('read round ~' + Math.round(roundMs) + ' ms');
             }
             pollTimer = setTimeout(poll, onScreen ? 100 : 1000);
         }
@@ -234,7 +245,8 @@ mgu.run({
         const carPresent = () => lastCar > 0 || subs.some((s) => s.available) || link.available || !!full.available;
         const usingDemo = () => settings.get('demo') === 'on' || (settings.get('demo') === 'auto' && !carPresent() && Date.now() - startT > 5000);
         setInterval(() => poller.setPaused(usingDemo() || settings.get('ethanolSource') === 'dme'), 1000);
-        const fresh = (k) => (unitT[k] && Date.now() - unitT[k] < STALE_MS ? unit[k] : null);
+        const staleAfter = (k) => Math.min(STALE_MAX_MS, Math.max(STALE_MS, 3 * (EVERY[k] || 1) * roundMs));
+        const fresh = (k) => (unitT[k] && Date.now() - unitT[k] < staleAfter(k) ? unit[k] : null);
         /*
          * Ethanol: MHD's Active (what the map uses) with the sensor's CAN beside it; Auto falls back to the DME's own
          * value (550D) while MHD has none. ethanolSrc says which one the tile shows; ethanolWhy why MHD is not used.
@@ -403,6 +415,10 @@ mgu.run({
             if (TYRES.some((k) => tyreLow(k, d))) crit('TYRE LOW');
             if (ethanolMismatch(d)) out.push({ text: 'E MISMATCH', color: 'warn' });
             if (usingDemo()) out.push({ text: 'DEMO' });
+            if (out.length > MAX_BADGES) {
+                const more = out.length - (MAX_BADGES - 1);
+                out.splice(MAX_BADGES - 1, out.length, { text: '+' + more + ' MORE', color: 'crit' });
+            }
             return out;
         }
 
@@ -414,15 +430,17 @@ mgu.run({
         const pu = () => PRESS[settings.get('pressUnit')] || PRESS.psi;
         const fpu = () => FUEL_PRESS[settings.get('fuelPressUnit')] || FUEL_PRESS.psi;
         const DEC = { tyre: 2, oil: 3, boost: 4 };
+        /** A number as text to d decimals, never "-0.0" (a value that rounds to zero shows as 0). */
+        const num = (v, d) => G.fmt(G.isNum(v) && Math.abs(v) < 0.5 * Math.pow(10, -(d || 0)) ? 0 : v, d);
         /** A pressure (bar) in the chosen unit, as text; kind = tyre / oil / boost picks the decimals. */
-        const P = (b, kind) => G.fmt(G.isNum(b) ? b * pu()[0] : null, pu()[DEC[kind]]);
+        const P = (b, kind) => num(G.isNum(b) ? b * pu()[0] : null, pu()[DEC[kind]]);
         const pU = () => pu()[1];
-        const FP = (b) => G.fmt(G.isNum(b) ? b * fpu()[0] : null, fpu()[2]);
+        const FP = (b) => num(G.isNum(b) ? b * fpu()[0] : null, fpu()[2]);
         const fahrenheit = () => settings.get('tempUnit') === 'f';
         /** A temperature (deg C) in the chosen unit; tU = its label. */
         const T = (c) => (G.isNum(c) ? (fahrenheit() ? c * 9 / 5 + 32 : c) : null);
         const tU = () => (fahrenheit() ? '°F' : '°C');
-        const tTxt = (c) => G.fmt(T(c), 0) + ' ' + tU();
+        const tTxt = (c) => num(T(c), 0) + ' ' + tU();
         /*
          * Mixture: lambda from the engine unit, shown as AFR = lambda x stoichiometric ratio.
          *   afr     - gasoline scale (14.7), as MHD / BM3 log it: comparable with the map whatever the fuel
@@ -441,28 +459,32 @@ mgu.run({
 
         /* ---------- drawing ---------- */
 
+        /** The car's colours: Brooklyn Grey (the owner's G42), with darker rims, lit haunches and hood, black glass. */
+        const CAR_COL = { edge: '#5a6066', body: '#8b9197', hi: withAlpha('#ffffff', 0.12), glass: '#0e1319', roof: '#7d838a',
+            line: withAlpha('#000000', 0.3), light: '#dce8f6', tail: '#c81d28', grille: '#08090b' };
         /**
-         * Top-down car with its wheels inside the body; per tyre, beside its wheel, three lines: the pressure (big,
-         * coloured against the hot target), the air temperature (coloured by its window) and the cold pressure to
-         * inflate to before the next stint. The hot targets (one per axle) go once, in the panel's title row.
+         * Top-down G42 with its wheels just outside the body; per tyre, beside its wheel, three lines: the pressure
+         * (big, coloured against the hot target), the air temperature (coloured by its window) and the cold pressure
+         * to inflate to before the next stint. The hot targets (one per axle) go once, in the panel's title row.
          */
         function drawTyres(cv, t, x, y, w, h, d, ses) {
             const p = panel(cv, t, x, y, w, h, 'Tyres - ' + profile()[0]);
             const tf = target('FL'), tr = target('RL');
             cv.text(G.isNum(tf) || G.isNum(tr) ? 'target ' + P(tf, 'tyre') + ' / ' + P(tr, 'tyre') : 'set hot target',
                 x + w - 18, y + 40, 20, G.isNum(tf) || G.isNum(tr) ? t.dim : t.warn, { align: 'right' });
-            // the car (a G42 from above, nose up), in its real proportions (about 4.5 x 1.8 m), centred under the title
-            const yb = p.y + p.h, cx = x + w / 2, bw = 130, bh = 320, L = cx - bw / 2, R = cx + bw / 2;
-            const top = Math.round(y + 56 + (yb - 16 - (y + 56) - bh) / 2);
-            Icons.car(cv, cx, top, bw, bh, { body: withAlpha(t.tick, 0.6), glass: withAlpha(t.bg, 0.7), line: withAlpha(t.bg, 0.35),
-                light: withAlpha('#ffffff', 0.55), tail: withAlpha(t.crit, 0.75) });
-            const wheels = Icons.carTyres(cx, top, bw, bh);
+            // the car (a G42 from above, nose up), in its real proportions (4.54 x 1.84 m), centred under the title;
+            // drawn once into a cached layer (its curves are many small triangles), then copied every frame
+            const yb = p.y + p.h, cx = Math.round(x + w / 2), bw = 136, bh = 366, pad = 12;
+            const top = Math.round(y + 56 + (yb - 12 - (y + 56) - bh) / 2);
+            cv.blit(G.layer(['g42', bw, bh].join('|'), bw + 2 * pad, bh + 2 * pad, (c) => Icons.car(c, bw / 2 + pad, pad, bw, bh, CAR_COL), cv.textScale),
+                cx - bw / 2 - pad, top - pad);
+            const wheels = Icons.carTyres(cx, top, bw, bh), L = wheels.FL.x, R = wheels.FR.x + wheels.FR.w;
             for (const k of TYRES) {
                 const side = k[1] === 'L' ? -1 : 1, wh = wheels[k], pr = d['p' + k], tc = d['t' + k];
                 const ps = tyrePressState(k, d), ts = tempState(tc);
                 // the tyre takes its temperature's colour, as the temperature number; grey without a temperature
-                Icons.tyre(cv, wh.x, wh.y, wh.w, wh.h, ts ? withAlpha(stateCol(t, ts), 0.9) : t.tick, withAlpha(t.bg, 0.4));
-                const al = side < 0 ? 'right' : 'left', lx = side < 0 ? L - 16 : R + 16, by = wh.y + 36, unit = ' ' + pU();
+                Icons.tyre(cv, wh.x, wh.y, wh.w, wh.h, ts ? stateCol(t, ts) : t.tick, withAlpha('#000000', 0.25));
+                const al = side < 0 ? 'right' : 'left', lx = side < 0 ? L - 14 : R + 14, by = wh.y + wh.h / 2 - 2, unit = ' ' + pU();
                 const unitW = cv.textWidth(unit, 22);
                 const vw = cv.text(P(pr, 'tyre'), lx + (side < 0 ? -unitW : 0), by, 50, G.isNum(pr) ? stateCol(t, ps) : t.dim, { align: al, font: 'num' });
                 cv.text(unit, side < 0 ? lx : lx + vw, by, 22, t.dim, { align: al });
@@ -519,7 +541,7 @@ mgu.run({
             const B = (c, r) => ({ x: x0 + c * (tw + gx), y: G.TOP + r * (th + gy), w: tw, h: th });
             const pk = ses.peak, mn = ses.min;
             const peak = (k) => (G.isNum(pk[k]) ? 'peak ' + tTxt(pk[k]) : '');
-            const temp = (c) => G.fmt(T(c), 0);
+            const temp = (c) => num(T(c), 0);
             // row 1: oil temp, oil pressure, coolant, gearbox
             tile(cv, t, B(0, 0), 'Oil temp', temp(d.oil), tU(), tempSt(d.oil, settings.get('oilWarn'), 70), peak('oil'));
             tile(cv, t, B(1, 0), 'Oil pressure', P(d.oilP, 'oil'), pU(), okOr(oilPLow(d), G.isNum(d.oilP)),
@@ -544,7 +566,7 @@ mgu.run({
             tile(cv, t, B(2, 2), mixLabel(), mix(d.lambda), '', okOr(lean(d), G.isNum(d.lambda) && G.isNum(d.lambdaTarget)),
                 G.isNum(d.lambdaTarget) ? 'target ' + mix(d.lambdaTarget) : '');
             // to 0.1 degree, and never "-0.0"
-            const deg = (v) => (G.isNum(v) ? G.fmt(Math.round(v * 10) / 10 || 0, 1) : '--');
+            const deg = (v) => num(v, 1);
             tile(cv, t, B(3, 2), 'Knock', deg(d.knock), '°', knocking(d) ? 'crit' : G.isNum(d.knock) && d.knock <= -1 ? 'warn' : G.isNum(d.knock) ? 'ok' : null,
                 G.isNum(mn.knock) ? 'worst ' + deg(mn.knock) + '°' : '');
         }
