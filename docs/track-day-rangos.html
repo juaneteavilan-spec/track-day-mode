@@ -1,0 +1,302 @@
+<title>Rangos Track Day M240i</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one reference sheet. Context strip (Bogotá) on top, then one wide table grouped by system, read row by row in the pits. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --fg: #121722; --muted: #5b6577; --line: #d9dee7;
+  --m1: #3d8fd6; --m2: #16588e; --m3: #d81f2a;
+  --ok: #17824a; --ok-bg: #e3f4ea; --warn: #9a5b00; --warn-bg: #fdf0d9; --crit: #b3141c; --crit-bg: #fbe3e4; --cold: #1666a6; --cold-bg: #e2f0fb;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #090c11; --surface: #11161f; --fg: #e8edf4; --muted: #8f9bad; --line: #232b38;
+  --m1: #81c4ff; --m2: #2d74b3; --m3: #ef2b2d;
+  --ok: #5fd793; --ok-bg: #12301f; --warn: #ffc15a; --warn-bg: #33270f; --crit: #ff6b6e; --crit-bg: #3a1416; --cold: #8fd3ff; --cold-bg: #0f2a3d;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #090c11; --surface: #11161f; --fg: #e8edf4; --muted: #8f9bad; --line: #232b38;
+  --m1: #81c4ff; --m2: #2d74b3; --m3: #ef2b2d;
+  --ok: #5fd793; --ok-bg: #12301f; --warn: #ffc15a; --warn-bg: #33270f; --crit: #ff6b6e; --crit-bg: #3a1416; --cold: #8fd3ff; --cold-bg: #0f2a3d;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 28px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+.stripe { display: flex; gap: 3px; width: 96px; }
+.stripe i { height: 5px; flex: 1; }
+.stripe i:nth-child(1) { background: var(--m1); } .stripe i:nth-child(2) { background: var(--m2); } .stripe i:nth-child(3) { background: var(--m3); }
+header { display: grid; gap: 8px; }
+h1 { font: 700 clamp(26px, 4vw, 36px)/1.1 var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0; max-width: 70ch; }
+
+.context { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.fact { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+.fact b { font: 700 22px/1.2 var(--font-display); font-variant-numeric: tabular-nums; }
+.fact span { color: var(--muted); font-size: 13.5px; }
+.label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
+
+.effects { margin: 0; padding-left: 20px; display: grid; gap: 4px; max-width: 95ch; }
+.effects li::marker { color: var(--m3); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13.5px; color: var(--muted); }
+.chip { display: inline-block; border-radius: 4px; padding: 1px 7px; font-weight: 600; font-size: 12.5px; }
+.chip.ok { color: var(--ok); background: var(--ok-bg); } .chip.warn { color: var(--warn); background: var(--warn-bg); }
+.chip.crit { color: var(--crit); background: var(--crit-bg); } .chip.cold { color: var(--cold); background: var(--cold-bg); }
+
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 1120px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+thead th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; background: var(--surface); position: sticky; top: 0; }
+tbody tr.group th { background: var(--bg); font: 700 13px/1.3 var(--font-display); text-transform: uppercase; letter-spacing: .1em; color: var(--fg); padding-block: 8px; }
+td.name { font-weight: 600; white-space: nowrap; }
+td.name small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+td.def { color: var(--muted); max-width: 30ch; }
+td.v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.v .chip { white-space: nowrap; }
+td.bog { max-width: 32ch; font-size: 13.5px; }
+td.v small { display: block; color: var(--muted); font-size: 12px; white-space: normal; max-width: 22ch; }
+tbody tr:last-child td { border-bottom: 0; }
+
+/* how the app colours: three short facts, then a compact rule table */
+.how { display: grid; gap: 14px; }
+.how h2 { font: 700 clamp(20px, 3vw, 26px)/1.2 var(--font-display); margin: 0; text-wrap: balance; }
+.how .lead { margin: 0; color: var(--muted); max-width: 80ch; }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.step b { font: 700 16px/1.3 var(--font-display); }
+.step p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.rules table { min-width: 820px; }
+.rules td.rule { max-width: 46ch; }
+.rules td.when { color: var(--muted); font-size: 13.5px; max-width: 30ch; }
+.rules td.set { font-size: 13.5px; max-width: 26ch; }
+.rules td.set code { font: 600 12.5px/1.4 var(--font-body); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.rules td.set .fixed { color: var(--muted); }
+.notes { display: grid; gap: 6px; color: var(--muted); font-size: 13.5px; max-width: 95ch; }
+.notes p { margin: 0; }
+a { color: var(--m2); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) a { color: var(--m1); } }
+:root[data-theme="dark"] a { color: var(--m1); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="stripe"><i></i><i></i><i></i></div>
+    <h1>Rangos de operación · Track Day</h1>
+    <p class="sub">BMW M240i xDrive G42 (B58, ZF 8HP, turbo Hypercore, flex fuel). Qué mide cada indicador del tablero y en qué valores debería estar, ajustado a la altura de Bogotá y del Autódromo de Tocancipá. Temperaturas en °C, presiones en psi y mezcla en AFR; en la app las unidades se cambian en Ajustes.</p>
+  </header>
+
+  <section class="context" aria-label="Condiciones de Bogotá">
+    <div class="fact"><span class="label">Altura</span><b>≈ 2.600 m</b><span>Bogotá y Tocancipá están casi a la misma altura.</span></div>
+    <div class="fact"><span class="label">Presión atmosférica</span><b>≈ 10,9 psi</b><span>75 kPa, contra 14,7 psi a nivel del mar: unos 3,8 psi menos.</span></div>
+    <div class="fact"><span class="label">Densidad del aire</span><b>≈ 25 % menos</b><span>Menos aire pasa por el radiador y el intercooler a la misma velocidad.</span></div>
+    <div class="fact"><span class="label">Temperatura ambiente</span><b>8 – 22 °C</b><span>Mañanas frías, mediodía templado. Asfalto de pista al sol: 30 – 45 °C.</span></div>
+  </section>
+
+  <section>
+    <p class="label" style="margin:0 0 6px">Qué cambia por la altura</p>
+    <ul class="effects">
+      <li><strong>El turbo trabaja más.</strong> Para meter la misma cantidad de aire al motor, el boost que ves (sobre la atmósfera) es unos 3,8 psi mayor que a nivel del mar. Eso calienta más el aire de carga.</li>
+      <li><strong>Se enfría peor.</strong> Con aire menos denso, radiador e intercooler sacan menos calor. Las temperaturas se estabilizan más arriba en pista aunque el ambiente sea fresco.</li>
+      <li><strong>Menos margen de ebullición.</strong> El agua hierve a ≈ 91 °C a esta altura. El circuito presurizado lo compensa, pero el margen es menor que a nivel del mar.</li>
+      <li><strong>Llantas.</strong> El TPMS mide contra el aire de afuera: una llanta inflada a nivel del mar marca ≈ 3,8 psi más aquí. Infla y mide siempre en Bogotá.</li>
+      <li><strong>Knock.</strong> Con menos presión en los cilindros el motor golpea menos que a nivel del mar. Knock repetido aquí es una señal más seria.</li>
+    </ul>
+  </section>
+
+  <div class="legend">
+    <span><span class="chip cold">Frío</span> azul en el tablero: aún no está en temperatura</span>
+    <span><span class="chip ok">Normal</span> verde en el tablero: funcionamiento esperado</span>
+    <span><span class="chip warn">Atención</span> color amarillo en el tablero</span>
+    <span><span class="chip crit">Peligro</span> rojo + alerta arriba (umbral por defecto de la app)</span>
+  </div>
+
+  <div class="tablebox">
+    <table>
+      <thead>
+        <tr><th>Indicador</th><th>Qué mide</th><th>Normal en calle</th><th>Normal en pista</th><th>Atención</th><th>Peligro</th><th>En Bogotá</th></tr>
+      </thead>
+      <tbody>
+        <tr class="group"><th colspan="7">Llantas</th></tr>
+        <tr>
+          <td class="name">Presión de llanta<small>por llanta, psi</small></td>
+          <td class="def">Presión del aire de cada llanta. En pista se compara con el objetivo en caliente del perfil activo (Dry, Hot track, Wet).</td>
+          <td class="v"><span class="chip ok">placa de la puerta</span><small>en frío</small></td>
+          <td class="v"><span class="chip ok">objetivo ± 1,5</span><small>típico 34 – 38 en caliente con llanta de calle deportiva; lo define tu llanta</small></td>
+          <td class="v"><span class="chip warn">± 1,5 a 3 del objetivo</span><small>por debajo o por encima</small></td>
+          <td class="v"><span class="chip crit">más de 3 por debajo</span><small>desinflada</small><span class="chip crit">más de 3 por encima</span><small>TYRE LOW: menos de 20 psi, o 3 psi menos que en frío (fuga)</small></td>
+          <td class="bog">Sube 4 – 7 psi desde frío en un stint. Infla en frío en Bogotá; la app te dice a cuánto ("next cold"). Mientras la llanta está fría sale en azul y no se compara contra el objetivo.</td>
+        </tr>
+        <tr>
+          <td class="name">Temperatura de llanta<small>°C, sensor TPMS</small></td>
+          <td class="def">Temperatura del aire dentro de la llanta. No es la banda: es más baja y más lenta que un pirómetro.</td>
+          <td class="v"><span class="chip ok">15 – 40</span></td>
+          <td class="v"><span class="chip cold">menos de 35</span> <span class="chip ok">35 – 79</span></td>
+          <td class="v"><span class="chip warn">80 – 94</span></td>
+          <td class="v"><span class="chip crit">95 o más</span><small>TYRE HOT</small></td>
+          <td class="bog">Mañanas frías: las primeras 1 – 2 vueltas salen en azul. No exijas el carro hasta que entren en ventana.</td>
+        </tr>
+
+        <tr class="group"><th colspan="7">Motor y lubricación</th></tr>
+        <tr>
+          <td class="name">Temperatura de aceite<small>°C</small></td>
+          <td class="def">Aceite del motor. Hasta 70 °C el aceite no protege del todo; ahí no conviene ir a fondo ni a altas rpm.</td>
+          <td class="v"><span class="chip ok">95 – 110</span></td>
+          <td class="v"><span class="chip cold">menos de 70</span> <span class="chip ok">100 – 114</span></td>
+          <td class="v"><span class="chip warn">115 – 124</span></td>
+          <td class="v"><span class="chip crit">125 o más</span><small>OIL HOT</small></td>
+          <td class="bog">El ambiente fresco ayuda, pero el aire delgado enfría menos. En tandas largas espera 110 – 120.</td>
+        </tr>
+        <tr>
+          <td class="name">Presión de aceite<small>psi, sobre la atmósfera</small></td>
+          <td class="def">Lo que entrega la bomba. La del B58 es variable y la regula la DME, así que sube y baja con rpm y carga.</td>
+          <td class="v"><span class="chip ok">20 – 30</span><small>ralentí caliente</small><span class="chip ok">35 – 55</span><small>crucero</small></td>
+          <td class="v"><span class="chip ok">50 – 75</span><small>por encima de 3.000 rpm</small></td>
+          <td class="v"><span class="chip warn">caídas en curva larga</span><small>aunque no lleguen al límite</small></td>
+          <td class="v"><span class="chip crit">menos de 25</span><small>por encima de 2.000 rpm (OIL PRESS LOW)</small></td>
+          <td class="bog">La altura no la cambia. Mira el mínimo de la sesión: si baja en las curvas largas, falta aceite o se está aireando.</td>
+        </tr>
+        <tr>
+          <td class="name">Refrigerante<small>°C</small></td>
+          <td class="def">Temperatura del motor. El B58 la regula con bomba eléctrica y termostato de mapa: más caliente en Comfort, más fría en Sport.</td>
+          <td class="v"><span class="chip ok">90 – 105</span></td>
+          <td class="v"><span class="chip cold">menos de 60</span> <span class="chip ok">90 – 101</span></td>
+          <td class="v"><span class="chip warn">102 – 111</span></td>
+          <td class="v"><span class="chip crit">112 o más</span><small>COOLANT HOT</small></td>
+          <td class="bog">Menos margen de ebullición por la altura. Si pasa de 105 en pista, haz una vuelta de enfriamiento. En calle y en Comfort el termostato lo deja en 100 – 110 para gastar menos: ahí puede salir amarillo sin que haya falla.</td>
+        </tr>
+
+        <tr class="group"><th colspan="7">Transmisión</th></tr>
+        <tr>
+          <td class="name">Caja ZF 8HP<small>°C, aceite de la caja</small></td>
+          <td class="def">Temperatura del aceite de la transmisión automática.</td>
+          <td class="v"><span class="chip ok">70 – 95</span></td>
+          <td class="v"><span class="chip cold">menos de 40</span> <span class="chip ok">85 – 109</span></td>
+          <td class="v"><span class="chip warn">110 – 119</span></td>
+          <td class="v"><span class="chip crit">120 o más</span><small>GEARBOX HOT</small></td>
+          <td class="bog">Con la repro de caja los cambios son más rápidos y la calienta un poco más. Sube más lento que el aceite del motor.</td>
+        </tr>
+
+        <tr class="group"><th colspan="7">Admisión y combustible</th></tr>
+        <tr>
+          <td class="name">Aire de admisión<small>°C, IAT</small></td>
+          <td class="def">Aire que entra al filtro, antes del turbo. Normalmente es el ambiente más el calor del vano motor.</td>
+          <td class="v"><span class="chip ok">ambiente + 5 a 15</span><small>15 – 30 en Bogotá</small></td>
+          <td class="v"><span class="chip ok">20 – 44</span></td>
+          <td class="v"><span class="chip warn">45 – 54</span></td>
+          <td class="v"><span class="chip crit">55 o más</span></td>
+          <td class="bog">Al detenerte en pits sube rápido por calor del vano (heat soak). Baja apenas vuelves a rodar.</td>
+        </tr>
+        <tr>
+          <td class="name">Aire de carga<small>°C, después del intercooler</small></td>
+          <td class="def">El aire que realmente entra a los cilindros, ya comprimido por el turbo y enfriado por el intercooler frontal. Si sube, la DME quita avance y pierdes potencia.</td>
+          <td class="v"><span class="chip ok">ambiente + 5 a 20</span><small>15 – 35 en Bogotá</small></td>
+          <td class="v"><span class="chip ok">30 – 49</span></td>
+          <td class="v"><span class="chip warn">50 – 59</span></td>
+          <td class="v"><span class="chip crit">60 o más</span><small>CHARGE AIR HOT</small></td>
+          <td class="bog">Es el indicador que más castiga la altura: el turbo comprime más y el intercooler recibe menos aire. Si sube vuelta tras vuelta, haz una vuelta suave.</td>
+        </tr>
+        <tr>
+          <td class="name">Combustible<small>°C</small></td>
+          <td class="def">Temperatura del combustible que llega a la bomba de alta. Caliente, la bomba sostiene peor la presión.</td>
+          <td class="v"><span class="chip ok">20 – 40</span></td>
+          <td class="v"><span class="chip ok">25 – 49</span></td>
+          <td class="v"><span class="chip warn">50 – 59</span></td>
+          <td class="v"><span class="chip crit">60 o más</span></td>
+          <td class="bog">Sube con el tanque bajo. Ve a pista con más de medio tanque.</td>
+        </tr>
+        <tr>
+          <td class="name">Etanol<small>%, sensor flex fuel</small></td>
+          <td class="def">Porcentaje de etanol de la mezcla que hay en el tanque. Tiene que coincidir con lo que espera el mapa.</td>
+          <td class="v"><span class="chip ok">≈ 8 – 12</span><small>con gasolina de bomba sola (en Colombia ya trae ≈ 10 % de etanol)</small></td>
+          <td class="v"><span class="chip ok">el que espera tu mapa</span><small>ej. mapa E30 → 28 – 34</small></td>
+          <td class="v"><span class="chip warn">5 o más puntos de diferencia</span></td>
+          <td class="v"><span class="chip crit">10 o más puntos de diferencia</span><small>riesgo de mezcla pobre o knock. La app lo marca en amarillo (E MISMATCH) cuando el valor del mapa de MHD y el del sensor se separan 10 puntos</small></td>
+          <td class="bog">Revísalo antes de salir, sobre todo si mezclaste en la bomba. El sensor tarda unos minutos en leer un tanque nuevo.</td>
+        </tr>
+
+        <tr class="group"><th colspan="7">Turbo, inyección y mezcla</th></tr>
+        <tr>
+          <td class="name">Boost<small>psi, sobre la atmósfera</small></td>
+          <td class="def">Presión del turbo. El máximo lo define tu mapa custom; lo importante es que siga al objetivo.</td>
+          <td class="v"><span class="chip ok">sigue al objetivo</span><small>0 – 5 en crucero</small></td>
+          <td class="v"><span class="chip ok">objetivo ± 2</span><small>a fondo</small></td>
+          <td class="v"><span class="chip warn">2 – 4 por debajo</span></td>
+          <td class="v"><span class="chip crit">4 o más por debajo</span><small>o 3 o más por encima (sobrepresión)</small></td>
+          <td class="bog">Verás ≈ 3,8 psi más que el mismo mapa a nivel del mar. Compara siempre contra el objetivo, no contra cifras de foros.</td>
+        </tr>
+        <tr>
+          <td class="name">HPFP<small>psi, bomba de alta</small></td>
+          <td class="def">Presión en el riel de inyección. El límite clásico del B58 con etanol y más potencia es que esta bomba no alcanza.</td>
+          <td class="v"><span class="chip ok">700 – 1.500</span><small>ralentí y crucero</small></td>
+          <td class="v"><span class="chip ok">objetivo − 10 %</span><small>hasta ≈ 5.000 a fondo</small></td>
+          <td class="v"><span class="chip warn">10 – 15 % bajo el objetivo</span><small>referencia; la app no lo pinta amarillo</small></td>
+          <td class="v"><span class="chip crit">más de 15 % bajo</span><small>HPFP LOW</small></td>
+          <td class="bog">La altura no la cambia. Más etanol pide más caudal: con mezclas altas mírala en cada recta.</td>
+        </tr>
+        <tr>
+          <td class="name">AFR<small>escala gasolina (14,7)</small></td>
+          <td class="def">Relación aire-combustible. 14,7 = mezcla estequiométrica; un número menor = mezcla rica, que es lo que el motor necesita a fondo para protegerse. Se muestra en escala de gasolina, como en MHD/BM3, para compararla con el mapa sin importar el etanol.</td>
+          <td class="v"><span class="chip ok">14,4 – 15,0</span><small>crucero</small></td>
+          <td class="v"><span class="chip ok">objetivo ± 0,4</span><small>típico 11,5 – 12,5 a fondo, según el mapa</small></td>
+          <td class="v"><span class="chip warn">0,4 – 0,7 más pobre</span><small>referencia; la app no lo pinta amarillo</small></td>
+          <td class="v"><span class="chip crit">0,7 o más pobre</span><small>bajo carga (LEAN)</small></td>
+          <td class="bog">Si aparece junto con HPFP LOW, es la bomba de alta. Si aparece sola, revisa el etanol contra el mapa. Equivale a lambda: AFR ÷ 14,7.</td>
+        </tr>
+        <tr>
+          <td class="name">Knock<small>grados de retardo</small></td>
+          <td class="def">Cuánto avance de encendido le quita la DME al motor porque detecta golpeteo. 0 = nada.</td>
+          <td class="v"><span class="chip ok">0</span></td>
+          <td class="v"><span class="chip ok">0 a −1</span><small>ocasional</small></td>
+          <td class="v"><span class="chip warn">−1 a −3</span></td>
+          <td class="v"><span class="chip crit">−3 o peor</span><small>KNOCK; o repetido en cada vuelta</small></td>
+          <td class="bog">Aquí el motor golpea menos que a nivel del mar. Knock repetido apunta a aire de carga caliente o a combustible que no corresponde al mapa.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <section class="notes">
+    <p><strong>De dónde salen estos rangos.</strong> Son valores de referencia del comportamiento típico del B58 y la ZF 8HP y de la experiencia de la comunidad de tuning, corregidos por la altura. No son cifras oficiales de BMW. Los rangos de boost, HPFP y lambda a fondo dependen de tu mapa custom.</p>
+    <p><strong>Cómo calibrarlos.</strong> En el primer track day con la app, anota los valores de una tanda en la que el carro se sintió bien. Esa es tu línea base. Ajusta los umbrales en Ajustes de la app si tu carro corre sistemáticamente un poco más arriba o más abajo.</p>
+    <p><strong>Umbrales de la app.</strong> Las columnas Atención y Peligro usan los valores por defecto del tablero; abajo está cómo los decide la app y cuáles se cambian en Settings.</p>
+  </section>
+
+  <section class="how" aria-labelledby="how-title">
+    <h2 id="how-title">Cómo decide la app el color</h2>
+    <p class="lead">El carro no dice si un valor está frío, bien o caliente: solo manda el número. Los colores son reglas de la app (versión 0.6.0), con los umbrales de esta hoja.</p>
+    <div class="steps">
+      <div class="step"><span class="label">1 · El carro mide</span><b>Solo números</b><p>La DME, la caja y el TPMS mandan el valor de cada sensor (por ejemplo "aceite 104 °C"), sin juicio.</p></div>
+      <div class="step"><span class="label">2 · El carro se protege solo</span><b>Límites internos, ocultos</b><p>La DME quita potencia o avance y el tablero prende testigos con sus propios límites. No los comparte con apps externas, así que la app no los puede leer.</p></div>
+      <div class="step"><span class="label">3 · La app juzga</span><b>Umbrales propios</b><p>Compara cada número con un límite fijo, con el objetivo que pide la DME, o con tu objetivo de llantas, y lo pinta. En rojo además pone el recuadro en rojo y una alerta arriba (máximo 3 alertas visibles).</p></div>
+    </div>
+
+    <div class="tablebox rules">
+      <table>
+        <thead>
+          <tr><th>Indicador</th><th>Regla de color</th><th>Cuándo se juzga</th><th>En Settings (por defecto)</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group"><th colspan="4">Temperaturas · rojo en el límite, amarillo desde 10 °C antes</th></tr>
+          <tr><td class="name">Aceite</td><td class="rule"><span class="chip cold">&lt; 70</span> <span class="chip ok">70 – 114</span> <span class="chip warn">115 – 124</span> <span class="chip crit">≥ 125</span></td><td class="when">Siempre</td><td class="set"><code>Oil temp warning</code> 125 °C</td></tr>
+          <tr><td class="name">Refrigerante</td><td class="rule"><span class="chip cold">&lt; 60</span> <span class="chip ok">60 – 101</span> <span class="chip warn">102 – 111</span> <span class="chip crit">≥ 112</span></td><td class="when">Siempre</td><td class="set"><code>Coolant temp warning</code> 112 °C</td></tr>
+          <tr><td class="name">Caja ZF 8HP</td><td class="rule"><span class="chip cold">&lt; 40</span> <span class="chip ok">40 – 109</span> <span class="chip warn">110 – 119</span> <span class="chip crit">≥ 120</span></td><td class="when">Siempre</td><td class="set"><code>Gearbox temp warning</code> 120 °C</td></tr>
+          <tr><td class="name">Aire de carga</td><td class="rule"><span class="chip ok">&lt; 50</span> <span class="chip warn">50 – 59</span> <span class="chip crit">≥ 60</span></td><td class="when">Siempre</td><td class="set"><code>Charge air temp warning</code> 60 °C</td></tr>
+          <tr><td class="name">Aire de admisión</td><td class="rule"><span class="chip ok">&lt; 45</span> <span class="chip warn">45 – 54</span> <span class="chip crit">≥ 55</span></td><td class="when">Siempre (sin alerta arriba, solo el recuadro)</td><td class="set"><span class="fixed">Fijo</span></td></tr>
+          <tr><td class="name">Combustible</td><td class="rule"><span class="chip ok">&lt; 50</span> <span class="chip warn">50 – 59</span> <span class="chip crit">≥ 60</span></td><td class="when">Siempre (sin alerta arriba, solo el recuadro)</td><td class="set"><span class="fixed">Fijo</span></td></tr>
+          <tr><td class="name">Temp. de llanta</td><td class="rule"><span class="chip cold">&lt; 35</span> <span class="chip ok">35 – 79</span> <span class="chip warn">80 – 94</span> <span class="chip crit">≥ 95</span></td><td class="when">Con sensores TPMS. Rojo = "demasiado caliente" + 15 °C</td><td class="set"><code>Tyres: working from</code> 35 °C<br><code>Tyres: too hot from</code> 80 °C</td></tr>
+
+          <tr class="group"><th colspan="4">Contra un objetivo o un mínimo</th></tr>
+          <tr><td class="name">Presión de llanta</td><td class="rule"><span class="chip ok">objetivo ± 1,5</span> <span class="chip warn">± 1,5 a 3</span> <span class="chip crit">más de 3</span>; rojo también si hay fuga (menos de 20 psi, o 3 psi menos que en frío)</td><td class="when">Solo con la llanta caliente; fría sale en azul. Sin objetivo dice "set hot target"</td><td class="set"><code>Tyre profile</code> y objetivos en caliente por perfil (sin definir)</td></tr>
+          <tr><td class="name">Presión de aceite</td><td class="rule"><span class="chip ok">verde</span> o <span class="chip crit">menos de 25 psi</span></td><td class="when">Solo por encima de 2.000 rpm (en ralentí es baja por diseño)</td><td class="set"><code>Oil pressure warning below</code> 25 psi</td></tr>
+          <tr><td class="name">Boost</td><td class="rule"><span class="chip ok">objetivo ± 2</span> <span class="chip warn">2 – 4 por debajo</span> <span class="chip crit">4 o más por debajo, o 3 o más por encima</span></td><td class="when">Solo cuando la DME pide más de 6 psi</td><td class="set"><span class="fixed">Fijo</span></td></tr>
+          <tr><td class="name">HPFP</td><td class="rule"><span class="chip ok">verde</span> o <span class="chip crit">menos del 85 % del objetivo</span></td><td class="when">Solo cuando la DME pide alta presión (más de ≈ 1.450 psi)</td><td class="set"><span class="fixed">Fijo</span></td></tr>
+          <tr><td class="name">AFR</td><td class="rule"><span class="chip ok">verde</span> o <span class="chip crit">0,7 o más pobre que el objetivo</span> (lambda 0,05)</td><td class="when">Solo cuando la DME enriquece (carga alta)</td><td class="set"><span class="fixed">Fijo</span></td></tr>
+          <tr><td class="name">Knock</td><td class="rule"><span class="chip ok">0 a −1</span> <span class="chip warn">−1 a −3</span> <span class="chip crit">−3 o peor</span></td><td class="when">Siempre</td><td class="set"><code>Knock retard warning from</code> 3°</td></tr>
+          <tr><td class="name">Etanol</td><td class="rule">Blanco (no se juzga); <span class="chip warn">amarillo</span> + E MISMATCH si mapa y sensor difieren 10 puntos o más</td><td class="when">Con MHD flex fuel</td><td class="set"><span class="fixed">Fijo</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>

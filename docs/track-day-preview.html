@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track Day preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&family=Ubuntu+Condensed&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0b0d11; --panel: #151922; --text: #e9edf3; --dim: #8a95a6; --line: #2a3140; --acc: #3d9bff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 Ubuntu, system-ui, sans-serif; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.note { color: var(--dim); margin: 0 0 12px; font-size: 13px; }
+  .screen { width: 100%; max-width: 1600px; aspect-ratio: 1600 / 588; background: #000; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  canvas { width: 100%; height: 100%; display: block; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 14px; max-width: 1600px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px; margin: 0; }
+  legend { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
+  label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0; }
+  select, input[type=number] { background: #0e1117; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; width: 110px; }
+  button { background: #1d2430; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; margin: 3px 4px 3px 0; }
+  button:hover { border-color: var(--acc); }
+  button.on { border-color: var(--acc); background: #16304f; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Track Day — vista previa</h1>
+<p class="note">Simulación en el navegador con la vuelta de demo de la app (DEMO). Mismo diseño, colores y reglas que <code>apps/m240_track_day/main.js</code>; en el carro lo dibuja el motor GPU del kit y las letras pueden variar un poco.</p>
+
+<div class="screen"><canvas id="cv" width="1600" height="588"></canvas></div>
+
+<div class="controls">
+  <fieldset>
+    <legend>Perfil de llantas</legend>
+    <label>Perfil activo
+      <select id="profile"><option value="dry">Dry</option><option value="hot">Hot track</option><option value="wet">Wet</option></select>
+    </label>
+    <div data-p="dry"><label>Dry: delantera (psi) <input type="number" id="tgtDryF" step="0.5" min="0" max="44" value="35"></label>
+      <label>Dry: trasera (psi) <input type="number" id="tgtDryR" step="0.5" min="0" max="44" value="35"></label></div>
+    <div data-p="hot" class="hidden"><label>Hot track: delantera <input type="number" id="tgtHotF" step="0.5" min="0" max="44" value="35"></label>
+      <label>Hot track: trasera <input type="number" id="tgtHotR" step="0.5" min="0" max="44" value="36"></label></div>
+    <div data-p="wet" class="hidden"><label>Wet: delantera <input type="number" id="tgtWetF" step="0.5" min="0" max="44" value="0"></label>
+      <label>Wet: trasera <input type="number" id="tgtWetR" step="0.5" min="0" max="44" value="0"></label></div>
+    <p class="note">0 = sin objetivo ("set hot target").</p>
+  </fieldset>
+  <fieldset>
+    <legend>Tiempo de la sesión</legend>
+    <label>Velocidad
+      <select id="speed"><option value="1">1× (real)</option><option value="5" selected>5×</option><option value="20">20×</option></select>
+    </label>
+    <button id="reset">New session</button>
+    <p class="note">La sesión se calienta en ~4 vueltas de 90 s. A 5× se ve en menos de 2 minutos.</p>
+  </fieldset>
+  <fieldset>
+    <legend>Forzar escenario</legend>
+    <div id="scen">
+      <button data-s="" class="on">Normal</button>
+      <button data-s="oilhot">Aceite caliente</button>
+      <button data-s="oilp">Presión aceite baja</button>
+      <button data-s="lean">Mezcla pobre</button>
+      <button data-s="hpfp">HPFP baja</button>
+      <button data-s="knock">Knock</button>
+      <button data-s="boost">Turbo no llega</button>
+      <button data-s="tyre">Llanta baja</button>
+      <button data-s="noecu">Sin datos de DME</button>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Unidades</legend>
+    <label>Temperatura <select id="tempUnit"><option value="c">°C</option><option value="f">°F</option></select></label>
+    <label>Presión (llantas, aceite, boost) <select id="pressUnit"><option value="psi">psi</option><option value="bar">bar</option><option value="kpa">kPa</option></select></label>
+    <label>Presión de combustible (HPFP) <select id="fuelPressUnit"><option value="psi">psi</option><option value="bar">bar</option><option value="mpa">MPa</option></select></label>
+    <label>Mezcla <select id="mixture"><option value="afr">AFR (escala gasolina 14.7)</option><option value="afrfuel">AFR del combustible</option><option value="lambda">Lambda</option></select></label>
+  </fieldset>
+</div>
+
+<script>/* apps/m240_track_day/icons.js, injected as is */
+window.Icons = (function () { const module = { exports: {} };
+'use strict';
+/**
+ * icons.js - the tiles' pictograms, in the spirit of BMW's warning lights, drawn with the kit's own shapes
+ * (the kit has no image decoder). Each is designed on a 24 x 24 grid and drawn at (x, y) in size s.
+ *
+ *   draw(cv, name, x, y, s, color, bg)   bg: the colour behind it (for the letter in the ethanol drop)
+ *
+ * cv needs: roundRect, strokeRoundRect, circle, arc (degrees clockwise from 12 o'clock), line, polyline, quad, fill (any polygon), text.
+ * The browser preview (preview/track-day-preview.html) runs this same code through a small canvas adapter.
+ */
+
+/** A drop, point up: centre of its round part (cx, cy), radius r. */
+function drop(cv, cx, cy, r, c) {
+    cv.circle(cx, cy, r, c);
+    cv.quad([[cx - r * 0.92, cy - r * 0.38], [cx + r * 0.92, cy - r * 0.38], [cx, cy - r * 2.1], [cx, cy - r * 2.1]], c);
+}
+/** A thermometer: stem from (cx, top) down, bulb under it. */
+function thermometer(cv, k, cx, top, len, c) {
+    cv.strokeRoundRect(cx - 3 * k, top, 6 * k, len * k, 3 * k, 2 * k, c);
+    cv.circle(cx, top + (len + 3) * k, 4.2 * k, c);
+}
+
+const ICONS = {
+    // engine oil temperature: thermometer and an oil drop
+    oilT(cv, P, k, c) {
+        thermometer(cv, k, P(7, 0)[0], P(0, 2)[1], 13, c);
+        drop(cv, P(18, 0)[0], P(0, 17)[1], 3.6 * k, c);
+    },
+    // oil pressure: BMW's oil can
+    oilP(cv, P, k, c) {
+        cv.roundRect(...P(2, 11), 14 * k, 8 * k, 2 * k, c);
+        cv.roundRect(...P(6, 8), 5 * k, 4 * k, 1 * k, c);
+        cv.line(...P(15, 13), ...P(22, 9), 2.4 * k, c);
+        cv.line(...P(3, 13), ...P(0.5, 10.5), 2.4 * k, c);
+        cv.circle(...P(21.5, 15), 1.7 * k, c);
+    },
+    // coolant: thermometer standing in waves
+    coolant(cv, P, k, c) {
+        thermometer(cv, k, P(12, 0)[0], P(0, 1)[1], 12, c);
+        cv.line(...P(15.5, 5), ...P(18.5, 5), 2 * k, c);
+        cv.line(...P(15.5, 9), ...P(18.5, 9), 2 * k, c);
+        cv.polyline([P(0.5, 21), P(3, 19), P(5.5, 21), P(7.5, 19.5)], 2 * k, c);
+        cv.polyline([P(16.5, 19.5), P(18.5, 21), P(21, 19), P(23.5, 21)], 2 * k, c);
+    },
+    // gearbox: a gear
+    gearbox(cv, P, k, c) {
+        const [cx, cy] = P(12, 12);
+        cv.arc(cx, cy, 4.2 * k, 7.6 * k, 0, 360, c);
+        for (let a = 0; a < 360; a += 45) {
+            const r = (a * Math.PI) / 180, s = Math.sin(r), co = -Math.cos(r);
+            cv.line(cx + s * 6.5 * k, cy + co * 6.5 * k, cx + s * 10.5 * k, cy + co * 10.5 * k, 3.4 * k, c);
+        }
+    },
+    // intake air: three streams of air
+    intake(cv, P, k, c) {
+        cv.polyline([P(1, 7), P(15, 7), P(18, 4.5), P(16.5, 2)], 2.2 * k, c);
+        cv.line(...P(1, 12), ...P(22, 12), 2.2 * k, c);
+        cv.polyline([P(1, 17), P(13, 17), P(16, 19.5), P(14.5, 22)], 2.2 * k, c);
+    },
+    // charge air: the intercooler's core
+    charge(cv, P, k, c) {
+        cv.strokeRoundRect(...P(2, 4), 20 * k, 16 * k, 2 * k, 2.2 * k, c);
+        for (const x of [7, 12, 17]) cv.line(...P(x, 6.5), ...P(x, 17.5), 1.6 * k, c);
+    },
+    // fuel temperature: fuel pump with a small thermometer
+    fuelT(cv, P, k, c) {
+        cv.strokeRoundRect(...P(2, 3), 11 * k, 19 * k, 2 * k, 2.2 * k, c);
+        cv.roundRect(...P(4.5, 6), 6 * k, 4 * k, 1 * k, c);
+        cv.polyline([P(13, 8), P(16, 8), P(17.5, 10), P(17.5, 14)], 2 * k, c);
+        thermometer(cv, k * 0.8, P(20.5, 0)[0], P(0, 10)[1], 8, c);
+    },
+    // ethanol: a drop with an E
+    ethanol(cv, P, k, c, bg) {
+        drop(cv, P(12, 0)[0], P(0, 15.5)[1], 7 * k, c);
+        cv.text('E', P(12, 0)[0], P(0, 20)[1], 12 * k, bg, { align: 'center', font: 'bold' });
+    },
+    // boost: a gauge
+    boost(cv, P, k, c) {
+        const [cx, cy] = P(12, 14);
+        cv.arc(cx, cy, 8.6 * k, 11 * k, -125, 125, c);
+        cv.line(cx, cy, ...P(17.5, 8.5), 2.6 * k, c);
+        cv.circle(cx, cy, 2.4 * k, c);
+    },
+    // high pressure fuel: a fuel drop with an arrow up
+    hpfp(cv, P, k, c) {
+        drop(cv, P(8, 0)[0], P(0, 16)[1], 6 * k, c);
+        cv.line(...P(19, 22), ...P(19, 7), 2.4 * k, c);
+        cv.quad([P(14.5, 9), P(23.5, 9), P(19, 2.5), P(19, 2.5)], c);
+    },
+    // air-fuel ratio: air beside a fuel drop
+    afr(cv, P, k, c) {
+        cv.line(...P(1, 8), ...P(10, 8), 2.2 * k, c);
+        cv.line(...P(1, 13), ...P(12, 13), 2.2 * k, c);
+        cv.line(...P(1, 18), ...P(10, 18), 2.2 * k, c);
+        drop(cv, P(18, 0)[0], P(0, 16)[1], 5 * k, c);
+    },
+    // knock: a lightning bolt
+    knock(cv, P, k, c) {
+        cv.quad([P(13, 1), P(19, 1), P(12.5, 12.5), P(6, 12.5)], c);
+        cv.quad([P(11, 10.5), P(18, 10.5), P(8, 23), P(9.5, 14)], c);
+    },
+};
+
+/** Draws the named icon in a box of size s at (x, y). Unknown names draw nothing. */
+function draw(cv, name, x, y, s, color, bg) {
+    const f = ICONS[name];
+    if (!f) return;
+    const k = s / 24, P = (gx, gy) => [x + gx * k, y + gy * k];
+    f(cv, P, k, color, bg);
+}
+
+
+/* ---------- the car: a G42 coupé from above ---------- */
+
+/** Closed Catmull-Rom curve through pts, n points per span: smooth outlines from a few hand-placed points. */
+function smooth(pts, n) {
+    const out = [], m = pts.length;
+    for (let i = 0; i < m; i++) {
+        const p0 = pts[(i - 1 + m) % m], p1 = pts[i], p2 = pts[(i + 1) % m], p3 = pts[(i + 2) % m];
+        for (let s = 0; s < n; s++) {
+            const t = s / n, t2 = t * t, t3 = t2 * t;
+            out.push([0, 1].map((j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
+                + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3)));
+        }
+    }
+    return out;
+}
+/** A left-right symmetric outline from its right half (centre front to centre rear, u 0..1 across, v 0..1 along). */
+function sym(half) {
+    const left = half.slice(1, -1).reverse().map(([u, v]) => [-u, v]);
+    return half.concat(left);
+}
+/** The right half's mirror image, for the parts that come in pairs (lights, creases). */
+const mirror = (pts) => pts.map(([u, v]) => [-u, v]);
+
+// right halves, in body units: u = 1 at the widest point (the rear haunches), v = 0 nose to 1 tail
+const BODY = [[0, 0], [0.45, 0.003], [0.73, 0.012], [0.87, 0.03], [0.925, 0.065], [0.935, 0.13], [0.94, 0.2], [0.915, 0.28],
+    [0.895, 0.36], [0.905, 0.47], [0.95, 0.6], [0.995, 0.7], [1, 0.8], [0.99, 0.89], [0.94, 0.958], [0.72, 0.992], [0.36, 1], [0, 1]];
+const GLASS = [[0, 0.33], [0.5, 0.335], [0.68, 0.36], [0.725, 0.41], [0.715, 0.5], [0.69, 0.6], [0.63, 0.69], [0.46, 0.752], [0, 0.76]];
+const ROOF = [[0, 0.442], [0.52, 0.446], [0.64, 0.475], [0.65, 0.6], [0.58, 0.646], [0, 0.654]];
+const HEADLIGHT = [[0.5, 0.018], [0.78, 0.03], [0.885, 0.058], [0.9, 0.084], [0.82, 0.082], [0.64, 0.058], [0.5, 0.036]];
+const TAILLIGHT = [[0.6, 0.99], [0.87, 0.97], [0.955, 0.925], [0.975, 0.895], [0.94, 0.905], [0.85, 0.952], [0.6, 0.976]];
+const MIRROR = [[0.86, 0.352], [1.06, 0.36], [1.1, 0.378], [1.06, 0.392], [0.88, 0.39]];
+const HAUNCH = [[0.62, 0.58], [0.9, 0.6], [0.97, 0.7], [0.97, 0.8], [0.9, 0.88], [0.66, 0.9], [0.8, 0.8], [0.8, 0.68]];
+
+/**
+ * The car from above, in the lines of a G42 coupé: twin kidneys, long hood with its creases, a glasshouse set
+ * back over the rear axle, wide rear haunches, L-shaped tail lights. Centre cx, from `top` down, bw wide (at the
+ * haunches) and bh long; the wheels go outside it (carTyres).
+ * col = { edge, body, hi, glass, roof, line, light, tail, grille } - edge is the body's darker rim.
+ */
+function car(cv, cx, top, bw, bh, col) {
+    const hw = bw / 2, X = (u) => cx + u * hw, Y = (v) => top + v * bh;
+    const at = (pts, n) => smooth(pts, n || 6).map(([u, v]) => [X(u), Y(v)]);
+    const line = (a, b, w, c) => cv.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]), w, c);
+    // the body: a darker rim, the panels inside it a little narrower (the edges roll away from the light)
+    cv.fill(at(sym(BODY), 8), col.edge);
+    cv.fill(at(sym(BODY).map(([u, v]) => [u * 0.93, 0.008 + v * 0.984]), 8), col.body);
+    // the rear haunches catch the light
+    cv.fill(at(HAUNCH), col.hi); cv.fill(at(mirror(HAUNCH)), col.hi);
+    // the hood: a lighter band down its middle, the two creases either side of the power dome
+    cv.fill(at(sym([[0, 0.05], [0.26, 0.06], [0.3, 0.2], [0.34, 0.31], [0, 0.315]]), 4), col.hi);
+    for (const s of [1, -1]) {
+        cv.polyline([[0.2 * s, 0.05], [0.26 * s, 0.17], [0.31 * s, 0.3]].map(([u, v]) => [X(u), Y(v)]), 1.6, col.line);
+        line([0.6 * s, 0.1], [0.7 * s, 0.3], 1.2, col.line);
+    }
+    // kidneys
+    cv.roundRect(X(-0.27), Y(0.004), 0.22 * hw, 0.026 * bh, 3, col.grille);
+    cv.roundRect(X(0.05), Y(0.004), 0.22 * hw, 0.026 * bh, 3, col.grille);
+    // headlights
+    cv.fill(at(HEADLIGHT, 4), col.light); cv.fill(at(mirror(HEADLIGHT), 4), col.light);
+    // mirrors
+    cv.fill(at(MIRROR, 4), col.edge); cv.fill(at(mirror(MIRROR), 4), col.edge);
+    // glasshouse: the glass, the roof panel on it, a reflection across the windscreen
+    cv.fill(at(sym(GLASS), 6), col.glass);
+    cv.fill(at(sym(ROOF), 6), col.roof);
+    cv.fill([[X(-0.5), Y(0.4)], [X(-0.2), Y(0.33)], [X(-0.02), Y(0.33)], [X(-0.34), Y(0.41)]], col.hi);
+    // boot: its shut line and the spoiler lip, the tail lights
+    line([-0.5, 0.79], [0.5, 0.79], 1.2, col.line);
+    cv.polyline([[-0.62, 0.952], [-0.3, 0.964], [0, 0.967], [0.3, 0.964], [0.62, 0.952]].map(([u, v]) => [X(u), Y(v)]), 1.6, col.line);
+    cv.fill(at(TAILLIGHT, 4), col.tail); cv.fill(at(mirror(TAILLIGHT), 4), col.tail);
+}
+
+/** Where the four wheels sit, just outside the body drawn by car(): { FL, FR, RL, RR: { x, y, w, h } }. */
+function carTyres(cx, top, bw, bh) {
+    const w = Math.round(bw * 0.18), h = Math.round(bh * 0.18), gap = 8, L = cx - bw / 2 - gap - w, R = cx + bw / 2 + gap;
+    const yf = Math.round(top + bh * 0.175 - h / 2), yr = Math.round(top + bh * 0.765 - h / 2);
+    return { FL: { x: L, y: yf, w, h }, FR: { x: R, y: yf, w, h }, RL: { x: L, y: yr, w, h }, RR: { x: R, y: yr, w, h } };
+}
+
+/** A tyre seen from above: a rounded block in its colour with a few tread grooves across it. */
+function tyre(cv, x, y, w, h, color, groove) {
+    cv.roundRect(x, y, w, h, Math.min(7, w / 3), color);
+    for (let i = 1; i <= 3; i++) {
+        const yy = y + h * i / 4;
+        cv.line(x + w * 0.28, yy, x + w * 0.72, yy, 1.6, groove);
+    }
+}
+
+module.exports = { draw, car, carTyres, tyre, names: Object.keys(ICONS) };
+
+return module.exports; })();</script>
+<script>
+'use strict';
+/* ---------- themes (kit/runtime/themes.js) ---------- */
+const THEMES = {
+  m_red: { bg: '#050506', track: '#222329', tick: '#5a5c64', text: '#ffffff', dim: '#8e9199', warn: '#ffb31a', crit: '#ff1f1f', cold: '#3d8bff', stripes: ['#e1001a'], sel: '#e1001a' },
+  m_tricolour: { bg: '#04060a', track: '#1b212b', tick: '#4c5666', text: '#f4f7fb', dim: '#8a95a6', warn: '#ffb020', crit: '#ef2b2d', cold: '#7fd1ff', stripes: ['#81c4ff', '#16588e', '#e7222e'], sel: '#ef2b2d' },
+  ice: { bg: '#050607', track: '#24262b', tick: '#62666e', text: '#ffffff', dim: '#9aa0a8', warn: '#ffc94d', crit: '#ff4040', cold: '#8fd3ff', stripes: ['#e9f2ff'], sel: '#ffffff' },
+  amber: { bg: '#060504', track: '#25221d', tick: '#655d50', text: '#ffe2b0', dim: '#9a8a70', warn: '#ffd000', crit: '#ff3b1f', cold: '#7fb7ff', stripes: ['#ff9d00'], sel: '#ff9d00' },
+};
+const GO = '#2fd27a', PSI = 14.5038, TYRES = ['FL', 'FR', 'RL', 'RR'];
+const TOP = 44, BOTTOM = 512, MARGIN = 22;
+
+/* ---------- settings (defaults as app.json) ---------- */
+const $ = (id) => document.getElementById(id);
+const S = { tyreCold: 35, tyreHot: 80, oilWarn: 125, oilPressMin: 25, coolantWarn: 112, gearboxWarn: 120, chargeWarn: 60, knockWarn: 3 };
+const get = (k) => (S[k] !== undefined ? S[k] : $(k).type === 'number' ? parseFloat($(k).value) || 0 : $(k).value);
+
+/* ---------- demo lap (apps/m240_track_day/demo.js), on a clock that can run faster ---------- */
+const LAP = 90;
+const SECTIONS = [[14, 'S'], [3, 'B'], [8, 'C'], [10, 'S'], [2.5, 'B'], [7, 'C'], [6, 'S'], [6, 'C'], [4, 'C'], [16, 'S'], [3.5, 'B'], [10, 'C']];
+let simT = 0, lastReal = performance.now();
+function section(tl) { let a = 0; for (const [d, k] of SECTIONS) { if (tl < a + d) return { k, f: (tl - a) / d }; a += d; } return { k: 'S', f: 0 }; }
+function sample() {
+  const t = simT, s = section(t % LAP);
+  const warm = Math.min(1, t / 270), tw = Math.min(1, t / 200), soak = Math.min(1, t / 400);
+  const load = s.k === 'S' ? Math.min(1, 0.4 + s.f * 3) : s.k === 'B' ? 0 : 0.35 + 0.25 * Math.sin(s.f * Math.PI);
+  const rpm = s.k === 'S' ? 4200 + 2600 * ((s.f * 4) % 1) : s.k === 'B' ? 5500 - 2500 * s.f : 3800 + 900 * Math.sin(s.f * Math.PI);
+  const boostTarget = 0.3 + 1.4 * load, hpfpTarget = 60 + 290 * load;
+  const lambdaTarget = load > 0.8 ? 0.80 : load > 0.5 ? 0.90 : 1.0;
+  const tyreT = (base) => 24 + (base - 24) * tw + 3 * Math.sin(t / 7);
+  const tFL = tyreT(66), tFR = tyreT(63), tRL = tyreT(58), tRR = tyreT(57);
+  const hot = (cold, tc) => (cold + 1.013) * (tc + 273.15) / (24 + 273.15) - 1.013;
+  return {
+    rpm, oil: 88 + 30 * warm + 4 * load, coolant: 88 + 16 * warm, gearbox: 60 + 45 * warm,
+    oilP: 1.6 + 2.9 * Math.min(1, rpm / 6000) - 0.3 * soak,
+    iat: 30 + 6 * soak + 2 * load, chargeAir: 34 + 20 * soak + 10 * load, fuelT: 30 + 9 * soak, ethanol: 42,
+    boost: Math.max(0, boostTarget - 0.08 + 0.04 * Math.sin(t * 3)), boostTarget,
+    hpfp: hpfpTarget * (load > 0.95 ? 0.97 : 1.0) + 3 * Math.sin(t * 2), hpfpTarget,
+    lambda: lambdaTarget + 0.01 * Math.sin(t * 2), lambdaTarget,
+    knock: load > 0.9 && rpm > 6000 ? -1.5 * soak : 0,
+    tFL, tFR, tRL, tRR, pFL: hot(29 / PSI, tFL), pFR: hot(29 / PSI, tFR), pRL: hot(29 / PSI, tRL), pRR: hot(29 / PSI, tRR),
+    ptFL: 2.5, ptFR: 2.5, ptRL: 2.6, ptRR: 2.6, load,
+  };
+}
+/* forced scenarios, applied on top of the demo */
+let scenario = '';
+function applyScenario(d) {
+  const s = scenario;
+  if (s === 'oilhot') { d.oil = 128; d.coolant = 114; }
+  if (s === 'oilp') { d.rpm = Math.max(d.rpm, 4500); d.oilP = 1.4; }
+  if (s === 'lean') { d.lambdaTarget = 0.80; d.lambda = 0.88; }
+  if (s === 'hpfp') { d.hpfpTarget = 350; d.hpfp = 270; }
+  if (s === 'knock') d.knock = -4.1;
+  if (s === 'boost') { d.boostTarget = 1.7; d.boost = 1.35; }
+  if (s === 'tyre') d.pRL = 1.6;
+  if (s === 'noecu') ['oilP', 'iat', 'chargeAir', 'fuelT', 'ethanol', 'boost', 'boostTarget', 'hpfp', 'hpfpTarget', 'lambda', 'lambdaTarget', 'knock', 'gearbox'].forEach((k) => { d[k] = null; });
+  return d;
+}
+
+/* ---------- session (as main.js) ---------- */
+const newSession = () => ({ startT: simT, peak: {}, min: {}, cold: {} });
+let ses = newSession();
+const isNum = (v) => typeof v === 'number' && isFinite(v);
+const fmt = (v, dec) => (isNum(v) ? v.toFixed(dec || 0) : '--');
+const running = (d) => isNum(d.rpm) && d.rpm > 2000;
+function track(d) {
+  const up = (k, v) => { if (isNum(v) && !(ses.peak[k] >= v)) ses.peak[k] = v; };
+  const down = (k, v) => { if (isNum(v) && !(ses.min[k] <= v)) ses.min[k] = v; };
+  ['oil', 'coolant', 'gearbox', 'iat', 'chargeAir', 'fuelT', 'boost', 'hpfp'].forEach((k) => up(k, d[k]));
+  if (isNum(d.knock)) down('knock', d.knock);
+  if (running(d)) down('oilP', d.oilP);
+  TYRES.forEach((k) => { up('t' + k, d['t' + k]); if (ses.cold[k] === undefined && isNum(d['p' + k])) ses.cold[k] = d['p' + k]; });
+}
+
+/* ---------- judgement (as main.js) ---------- */
+const psi = (b) => (isNum(b) ? b * PSI : null);
+const PROFILE = { dry: ['Dry', 'tgtDryF', 'tgtDryR'], hot: ['Hot track', 'tgtHotF', 'tgtHotR'], wet: ['Wet', 'tgtWetF', 'tgtWetR'] };
+const profile = () => PROFILE[get('profile')] || PROFILE.dry;
+function target(k) { const p = profile(), v = get(k[0] === 'F' ? p[1] : p[2]); return v > 0 ? v / PSI : null; }
+function pressState(pr, tg) { if (!isNum(pr) || !isNum(tg)) return null; const dv = Math.abs(pr - tg) * PSI; return dv <= 1.5 ? 'ok' : dv <= 3 ? 'warn' : 'crit'; }
+function tempState(tc) { if (!isNum(tc)) return null; const lo = get('tyreCold'), hi = get('tyreHot'); return tc < lo ? 'cold' : tc >= hi + 15 ? 'crit' : tc >= hi ? 'warn' : 'ok'; }
+/* tyres by priority (as main.js): puncture red > cold blue (not judged vs hot target) > overheating > pressure */
+const puncture = (k, d) => { const pr = d['p' + k], cold = ses.cold[k]; return isNum(pr) && (pr * PSI < 20 || (isNum(cold) && (cold - pr) * PSI >= 3)); };
+const warm = (k, d) => tempState(d['t' + k]) !== 'cold';
+const tyreLow = (k, d) => { const pr = d['p' + k], tg = target(k); return puncture(k, d) || (warm(k, d) && isNum(pr) && isNum(tg) && pr < tg * 0.85); };
+function tyrePressState(k, d) { if (tyreLow(k, d)) return 'crit'; if (!warm(k, d)) return isNum(d['p' + k]) ? 'cold' : null; return pressState(d['p' + k], target(k)); }
+function nextCold(k, d) { const pr = d['p' + k], tg = target(k), cold = ses.cold[k]; if (!warm(k, d) || puncture(k, d) || !isNum(pr) || !isNum(tg) || !isNum(cold)) return null; const v = cold + tg - pr; return v > 0.7 ? v : null; }
+const oilPLow = (d) => running(d) && isNum(d.oilP) && psi(d.oilP) < get('oilPressMin');
+const hpfpLow = (d) => isNum(d.hpfp) && isNum(d.hpfpTarget) && d.hpfpTarget > 100 && d.hpfp < d.hpfpTarget * 0.85;
+const lean = (d) => isNum(d.lambda) && isNum(d.lambdaTarget) && d.lambdaTarget < 0.95 && d.lambda - d.lambdaTarget >= 0.05;
+function boostState(d) { if (!isNum(d.boost) || !isNum(d.boostTarget) || psi(d.boostTarget) < 6) return null; const gap = psi(d.boost) - psi(d.boostTarget); return gap >= 3 ? 'crit' : gap <= -4 ? 'crit' : gap <= -2 ? 'warn' : 'ok'; }
+const knocking = (d) => isNum(d.knock) && -d.knock >= get('knockWarn');
+const tempSt = (v, warn, coldBelow) => (!isNum(v) ? null : v >= warn ? 'crit' : v >= warn - 10 ? 'warn' : isNum(coldBelow) && v < coldBelow ? 'cold' : 'ok');
+function alerts(d) {
+  const out = [], crit = (text) => out.push({ text, color: 'crit' });
+  if (oilPLow(d)) crit('OIL PRESS LOW'); if (lean(d)) crit('LEAN'); if (hpfpLow(d)) crit('HPFP LOW'); if (knocking(d)) crit('KNOCK');
+  if (isNum(d.oil) && d.oil >= get('oilWarn')) crit('OIL HOT');
+  if (isNum(d.coolant) && d.coolant >= get('coolantWarn')) crit('COOLANT HOT');
+  if (isNum(d.gearbox) && d.gearbox >= get('gearboxWarn')) crit('GEARBOX HOT');
+  if (isNum(d.chargeAir) && d.chargeAir >= get('chargeWarn')) crit('CHARGE AIR HOT');
+  if (TYRES.some((k) => tempState(d['t' + k]) === 'crit')) crit('TYRE HOT');
+  if (TYRES.some((k) => tyreLow(k, d))) crit('TYRE LOW');
+  out.push({ text: 'DEMO' });
+  return out;
+}
+
+/* ---------- drawing (kit look: gauges.js panel / stat) ---------- */
+const cv = $('cv'), c = cv.getContext('2d');
+const FONT = { label: '500', bold: '700', num: '500' };
+function text(s, x, y, size, color, o) {
+  o = o || {};
+  c.font = (FONT[o.font] || '400') + ' ' + size + 'px ' + (o.font === 'num' ? '"Ubuntu Condensed", Ubuntu' : 'Ubuntu') + ', sans-serif';
+  c.fillStyle = color; c.textAlign = o.align || 'left'; c.textBaseline = 'alphabetic';
+  if ('letterSpacing' in c) c.letterSpacing = (o.spacing || 0) + 'px';
+  c.fillText(String(s), x, y);
+  const w = c.measureText(String(s)).width;
+  if ('letterSpacing' in c) c.letterSpacing = '0px';
+  return w;
+}
+function width(s, size, o) { o = o || {}; c.font = (FONT[o.font] || '400') + ' ' + size + 'px ' + (o.font === 'num' ? '"Ubuntu Condensed", Ubuntu' : 'Ubuntu') + ', sans-serif'; return c.measureText(String(s)).width; }
+function rr(x, y, w, h, r, fill, stroke, lw) {
+  c.beginPath(); c.roundRect(x, y, w, h, r);
+  if (fill) { c.fillStyle = fill; c.fill(); }
+  if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw || 2; c.stroke(); }
+}
+function alpha(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+function panel(t, x, y, w, h, title) {
+  /* no M stripes (they go once, by the app's name in the header): the light overlay and a thin top line */
+  c.fillStyle = alpha('#b4bccc', 0.07); c.fillRect(x, y, w, h);
+  c.fillStyle = alpha('#ffffff', 0.35); c.fillRect(x, y + 2, w, 1.5);
+  if (title) text(title, x + 18, y + 42, 26, t.text, { font: 'bold' });
+}
+/* one colour language: green checked and normal, blue cold, yellow attention, red danger; white = not judged */
+const stateCol = (t, s) => (s === 'ok' ? GO : s === 'warn' ? t.warn : s === 'crit' ? t.crit : s === 'cold' ? t.cold : t.text);
+const okOr = (bad, judged) => (bad ? 'crit' : judged ? 'ok' : null);
+/* units (as main.js): values kept in deg C / bar / lambda, converted when drawn */
+const PRESS = { psi: [PSI, 'psi', 1, 0, 1], bar: [1, 'bar', 2, 1, 2], kpa: [100, 'kPa', 0, 0, 0] };
+const FUEL_PRESS = { psi: [PSI, 'psi', 0], bar: [1, 'bar', 0], mpa: [0.1, 'MPa', 1] };
+const pu = () => PRESS[get('pressUnit')], fpu = () => FUEL_PRESS[get('fuelPressUnit')], DEC = { tyre: 2, oil: 3, boost: 4 };
+const P = (b, kind) => fmt(isNum(b) ? b * pu()[0] : null, pu()[DEC[kind]]), pU = () => pu()[1];
+const FP = (b) => fmt(isNum(b) ? b * fpu()[0] : null, fpu()[2]);
+const fahr = () => get('tempUnit') === 'f';
+const T = (cc) => (isNum(cc) ? (fahr() ? cc * 9 / 5 + 32 : cc) : null), tU = () => (fahr() ? '°F' : '°C');
+const tTxt = (cc) => fmt(T(cc), 0) + ' ' + tU();
+function stoich(d) { const m = get('mixture'); if (m === 'lambda') return 1; if (m === 'afrfuel' && isNum(d.ethanol)) return 14.7 - 5.7 * Math.min(100, Math.max(0, d.ethanol)) / 100; return 14.7; }
+const mixLabel = () => (get('mixture') === 'lambda' ? 'Lambda' : get('mixture') === 'afrfuel' ? 'AFR (fuel)' : 'AFR');
+const mixDec = () => (get('mixture') === 'lambda' ? 2 : 1);
+/* the kit's canvas calls (record.js) on the browser's 2D canvas, for icons.js */
+const K = {
+  fillRect: (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); },
+  roundRect: (x, y, w, h, r, col) => rr(x, y, w, h, Math.min(r, w / 2, h / 2), col),
+  strokeRoundRect: (x, y, w, h, r, lw, col) => rr(x, y, w, h, Math.min(r, w / 2, h / 2), null, col, lw),
+  circle: (x, y, r, col) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = col; c.fill(); },
+  arc: (x, y, r0, r1, a0, a1, col) => { const A = (a) => (a - 90) * Math.PI / 180; c.beginPath(); c.arc(x, y, r1, A(a0), A(a1)); c.arc(x, y, r0, A(a1), A(a0), true); c.closePath(); c.fillStyle = col; c.fill(); },
+  line: (xa, ya, xb, yb, w, col) => { c.beginPath(); c.moveTo(xa, ya); c.lineTo(xb, yb); c.lineWidth = w; c.lineCap = 'round'; c.strokeStyle = col; c.stroke(); },
+  polyline: (pts, w, col) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = col; c.stroke(); },
+  quad: (pts, col) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fillStyle = col; c.fill(); },
+  fill: (pts, col) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fillStyle = col; c.fill(); },
+  text: (s, x, y, size, col, o) => text(s, x, y, size, col, o),
+};
+/* the car's colours (as main.js): Brooklyn Grey */
+const CAR_COL = { edge: '#5a6066', body: '#8b9197', hi: 'rgba(255,255,255,0.12)', glass: '#0e1319', roof: '#7d838a', line: 'rgba(0,0,0,0.3)', light: '#dce8f6', tail: '#c81d28', grille: '#08090b' };
+const ICON_OF = { 'Oil temp': 'oilT', 'Oil pressure': 'oilP', Coolant: 'coolant', Gearbox: 'gearbox', 'Intake air': 'intake', 'Charge air': 'charge', 'Fuel temp': 'fuelT', Ethanol: 'ethanol', Boost: 'boost', HPFP: 'hpfp', AFR: 'afr', 'AFR (fuel)': 'afr', Lambda: 'afr', Knock: 'knock' };
+function tile(t, b, label, txt, unit, state, sub) {
+  panel(t, b.x, b.y, b.w, b.h, null);
+  const alarm = txt !== '--' && state === 'crit';
+  if (alarm) { c.fillStyle = alpha(t.crit, 0.24); c.fillRect(b.x, b.y, b.w, b.h); }
+  Icons.draw(K, ICON_OF[label], b.x + 18, b.y + 20, 26, alarm ? t.crit : t.dim, alarm ? '#3a1214' : t.bg);
+  text(label, b.x + 54, b.y + 42, 26, t.text, { font: 'bold' });
+  const size = 58, vy = b.y + 52 + size * 0.78, has = txt !== '--';
+  const vw = text(txt, b.x + 18, vy, size, has ? stateCol(t, state) : t.dim, { font: 'num' });
+  if (has && unit) text(unit, b.x + 26 + vw, vy, 28, t.dim);
+  if (sub) text(sub, b.x + 18, b.y + b.h - MARGIN, 22, t.dim);
+}
+function drawTyres(t, x, y, w, h, d) {
+  /* as main.js: the car at its full size, wheels inside; per tyre three lines (pressure, temperature, inflate cold); targets once in the title row */
+  panel(t, x, y, w, h, 'Tyres - ' + profile()[0]);
+  const tf = target('FL'), tr = target('RL'), hasT = isNum(tf) || isNum(tr);
+  text(hasT ? 'target ' + P(tf, 'tyre') + ' / ' + P(tr, 'tyre') : 'set hot target', x + w - 18, y + 40, 20, hasT ? t.dim : t.warn, { align: 'right' });
+  const yb = y + h, cx = x + w / 2, bw = 136, bh = 366;
+  const top = Math.round(y + 56 + (yb - 12 - (y + 56) - bh) / 2);
+  Icons.car(K, cx, top, bw, bh, CAR_COL);
+  const wheels = Icons.carTyres(cx, top, bw, bh), L = wheels.FL.x, R = wheels.FR.x + wheels.FR.w;
+  for (const k of TYRES) {
+    const side = k[1] === 'L' ? -1 : 1, wh = wheels[k], pr = d['p' + k], tc = d['t' + k];
+    const ps = tyrePressState(k, d), ts = tempState(tc);
+    Icons.tyre(K, wh.x, wh.y, wh.w, wh.h, ts ? stateCol(t, ts) : t.tick, alpha('#000000', 0.25));
+    const al = side < 0 ? 'right' : 'left', lx = side < 0 ? L - 14 : R + 14, by = wh.y + wh.h / 2 - 2;
+    const unit = ' ' + pU(), uw = width(unit, 22);
+    const vw = text(P(pr, 'tyre'), lx + (side < 0 ? -uw : 0), by, 50, isNum(pr) ? stateCol(t, ps) : t.dim, { align: al, font: 'num' });
+    text(unit, side < 0 ? lx : lx + vw, by, 22, t.dim, { align: al });
+    text(isNum(tc) ? tTxt(tc) : '-- ' + tU(), lx, by + 40, 32, isNum(tc) ? stateCol(t, ts) : t.dim, { align: al, font: 'bold' });
+    let nc = nextCold(k, d);
+    if (isNum(nc) && pU() === 'psi') nc = Math.round(nc * PSI * 2) / 2 / PSI;
+    if (isNum(nc)) text('inflate cold: ' + P(nc, 'tyre'), lx, by + 68, 20, t.text, { align: al });
+  }
+}
+function drawTiles(t, d) {
+  const x0 = 600, cols = 4, rows = 3, gx = 16, gy = 14;
+  const tw = (1576 - x0 - gx * (cols - 1)) / cols, th = (BOTTOM - TOP - gy * (rows - 1)) / rows;
+  const B = (col, r) => ({ x: x0 + col * (tw + gx), y: TOP + r * (th + gy), w: tw, h: th });
+  const pk = ses.peak, mn = ses.min, peak = (k) => (isNum(pk[k]) ? 'peak ' + tTxt(pk[k]) : ''), temp = (v) => fmt(T(v), 0);
+  tile(t, B(0, 0), 'Oil temp', temp(d.oil), tU(), tempSt(d.oil, get('oilWarn'), 70), peak('oil'));
+  tile(t, B(1, 0), 'Oil pressure', P(d.oilP, 'oil'), pU(), okOr(oilPLow(d), isNum(d.oilP)), isNum(mn.oilP) ? 'min ' + P(mn.oilP, 'oil') + ' (>2000 rpm)' : '');
+  tile(t, B(2, 0), 'Coolant', temp(d.coolant), tU(), tempSt(d.coolant, get('coolantWarn'), 60), peak('coolant'));
+  tile(t, B(3, 0), 'Gearbox', temp(d.gearbox), tU(), tempSt(d.gearbox, get('gearboxWarn'), 40), peak('gearbox'));
+  tile(t, B(0, 1), 'Intake air', temp(d.iat), tU(), tempSt(d.iat, 55), peak('iat'));
+  tile(t, B(1, 1), 'Charge air', temp(d.chargeAir), tU(), tempSt(d.chargeAir, get('chargeWarn')), peak('chargeAir'));
+  tile(t, B(2, 1), 'Fuel temp', temp(d.fuelT), tU(), tempSt(d.fuelT, 60), peak('fuelT'));
+  tile(t, B(3, 1), 'Ethanol', fmt(d.ethanol, 0), '%', null, isNum(d.ethanol) ? 'MHD, sensor ' + fmt(d.ethanol, 0) : 'DME: no MHD');
+  tile(t, B(0, 2), 'Boost', P(d.boost, 'boost'), pU(), boostState(d), isNum(d.boostTarget) ? 'target ' + P(d.boostTarget, 'boost') : '');
+  tile(t, B(1, 2), 'HPFP', FP(d.hpfp), fpu()[1], okOr(hpfpLow(d), isNum(d.hpfp) && isNum(d.hpfpTarget)), isNum(d.hpfpTarget) ? 'target ' + FP(d.hpfpTarget) : '');
+  const st = stoich(d), mix = (l) => fmt(isNum(l) ? l * st : null, mixDec());
+  tile(t, B(2, 2), mixLabel(), mix(d.lambda), '', okOr(lean(d), isNum(d.lambda) && isNum(d.lambdaTarget)), isNum(d.lambdaTarget) ? 'target ' + mix(d.lambdaTarget) : '');
+  const deg = (v) => (isNum(v) ? fmt(Math.round(v * 10) / 10 || 0, 1) : '--');
+  tile(t, B(3, 2), 'Knock', deg(d.knock), '°', knocking(d) ? 'crit' : isNum(d.knock) && d.knock <= -1 ? 'warn' : isNum(d.knock) ? 'ok' : null, isNum(mn.knock) ? 'worst ' + deg(mn.knock) + '°' : '');
+}
+/* the HMI frame around the app: header strip with the app name + badges, slim button bar */
+function chrome(t, d) {
+  /* header as kit gauges.js headerCompact with config.header { size 40, bold, stripes }: the M stripes, then the name; no tabs */
+  c.fillStyle = '#000'; c.fillRect(0, 0, 1600, 56);
+  c.fillStyle = alpha('#ffffff', 0.22); c.fillRect(0, 54, 1600, 2);
+  text('‹', 20, 38, 34, t.dim);
+  const st = t.stripes, sw = (96 - 4 * (st.length - 1)) / st.length;
+  st.forEach((col, i) => { c.fillStyle = col; c.fillRect(56 + i * (sw + 4), 24, sw, 8); });
+  text('Track Day Mode', 56 + 96 + 18, 42, 40, t.text, { font: 'bold' });
+  let bx = 1584;
+  alerts(d).reverse().forEach((b) => {
+    const col = t[b.color] || t.warn, bw = Math.max(84, width(b.text, 18, { font: 'bold' }) + 30);
+    rr(bx - bw, 15, bw, 28, 5, alpha(col, 0.2));
+    text(b.text, bx - bw / 2, 35, 18, col, { align: 'center', font: 'bold', spacing: 1 });
+    bx -= bw + 10;
+  });
+  // slim bar
+  c.fillStyle = alpha('#ffffff', 0.05); c.fillRect(0, 540, 1600, 48);
+  c.fillStyle = alpha('#ffffff', 0.15); c.fillRect(0, 540, 1600, 1);
+  text('NEW SESSION', 400, 571, 20, t.text, { align: 'center', font: 'bold', spacing: 1.5 });
+  text('SETTINGS', 1200, 571, 20, t.text, { align: 'center', font: 'bold', spacing: 1.5 });
+  // session clock in the bar
+  const sec = Math.floor(simT - ses.startT), mm = Math.floor(sec / 60), ss = String(sec % 60).padStart(2, '0');
+  text('session ' + mm + ':' + ss, 800, 571, 20, t.dim, { align: 'center' });
+}
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastReal) / 1000); lastReal = now;
+  simT += dt * parseFloat($('speed').value);
+  const t = THEMES.m_tricolour;   // the app has one look: M Tricolour
+  const d = applyScenario(sample());
+  track(d);
+  c.fillStyle = t.bg; c.fillRect(0, 0, 1600, 588);
+  // the page sits under a 56 px header strip (the car's is taller still; the page is scaled into the room)
+  c.save(); c.translate(0, 20);
+  drawTyres(t, 24, TOP, 560, BOTTOM - TOP, d);
+  drawTiles(t, d);
+  c.restore();
+  chrome(t, d);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- controls ---------- */
+$('profile').onchange = () => document.querySelectorAll('[data-p]').forEach((el) => el.classList.toggle('hidden', el.dataset.p !== $('profile').value));
+$('reset').onclick = () => { simT = 0; ses = newSession(); };
+document.querySelectorAll('#scen button').forEach((b) => b.onclick = () => {
+  scenario = b.dataset.s;
+  document.querySelectorAll('#scen button').forEach((x) => x.classList.toggle('on', x === b));
+});
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => requestAnimationFrame(frame));
+</script>
+</body>
+</html>
