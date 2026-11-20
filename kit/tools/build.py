@@ -61,6 +61,18 @@ PLATFORM_PROXIES = {
     "de.bmw.infotainment.telematic.oap.WakeUpOnDemand": {"instances": ["${userId}"], "methods": ["registerParticipant", "unregisterParticipant"]},
     "de.bmw.infotainment.telematic.oap.WodControl": {"instances": "${userId}", "methods": ["offerService", "stopOfferingService"]},
     "de.bmw.infotainment.telematic.oapcontroller.OAPController": "*",
+    # iDrive 8's platform interfaces: an oap-sdk from an iDrive 8 unit (MainApp-21) builds its RHMI, resources and
+    # entry point on these and stops when their files are missing from the app's someipInterfaces (issue #152).
+    # Both units' catalogs have them (as the MGU Store's own app lists them).
+    "de.bmw.infotainment.hmi.entrypoint2.EntryPoint2": "*",
+    "de.bmw.infotainment.hmi.entrypoint2.EntryPointManager2": "*",
+    "de.bmw.infotainment.hmi.remote2.RemoteHmi2": "*",
+    "de.bmw.infotainment.hmi.remote2.RemoteHmiApplication2": "*",
+    "de.bmw.infotainment.hmi.resourcemanagement2.ResourceManager2": "*",
+    "de.bmw.infotainment.hmi.resourcemanagement2.ResourceBundle2": "*",
+    "de.bmw.infotainment.hmi.resourcemanagement2.StringBundle2": "*",
+    "de.bmw.infotainment.hmi.usecasemanagement.UseCaseContext": "*",
+    "de.bmw.infotainment.telematic.oap.PrivateEntryPoint2": {"instances": ["${userId}"], "methods": ["genericMethod"]},
     "de.bmw.infotainment.telematic.provisioning.Provisioning": {
         "broadcasts": ["provisioningDataJSON"], "instances": "1", "methods": ["getValueJSON", "setFilterForProvisioningData"]},
     "de.bmw.infotainment.vehicle.Vehicle": {"attributes": {"statusNewCurrentUnitsStatusExt": "rs"}, "instances": "1"},
@@ -156,7 +168,14 @@ def setting_options(s):
         steps = s.get('steps') or []
         unit = (' ' + s['unit']) if s.get('unit') else ''
         named = s.get('labels') or {}
-        values, labels = list(steps), [named.get('%g' % v, ('%g' % v) + unit) for v in steps]
+        # "unitBy" + "units" (kit/runtime/sheet.js numberText): the HMI's rows are fixed here, so they name
+        # the value in every unit ("215 kW / 288 hp / 292 PS")
+        alts = [u for u in (s.get('units') or {}).values()] if s.get('unitBy') else []
+        def text(v):
+            if alts and isinstance(v, (int, float)):
+                return ' / '.join([('%g' % v) + unit] + ['%d %s' % (int(v * u.get('mul', 1) + u.get('add', 0) + 0.5), u['unit']) for u in alts])
+            return ('%g' % v) + unit
+        values, labels = list(steps), [named.get('%g' % v, text(v)) for v in steps]
     if s.get('markDefault'):
         labels = [lb + ' (default)' if v == s.get('default') else lb for v, lb in zip(values, labels)]
     return values, labels
@@ -663,9 +682,21 @@ def build(app_id, language='en', preview_only=False):
             p = os.path.join(src, 'javascript', 'kit', 'locales', name)
             if os.path.exists(p):
                 os.remove(p)
+    if language != 'es':
+        # the Spanish catalog only in Spanish packages: the others keep main's file set
+        for name in ('es.json', 'es.tsv'):
+            p = os.path.join(src, 'javascript', 'kit', 'locales', name)
+            if os.path.exists(p):
+                os.remove(p)
     if language == 'ru':
         shutil.copy(os.path.join(KIT, 'localization', 'fonts', 'cyrillic-ru.json'),
                     os.path.join(src, 'javascript', 'kit', 'fonts', 'cyrillic.json'))
+    if language == 'es':
+        # The Latin atlases with the Spanish letters added (kit/tools/bake_spanish.py); their own cacheKey
+        # keeps them apart from an English app's atlases in the shared renderer.
+        for name in ('label.json', 'bold.json', 'light.json', 'num.json'):
+            shutil.copy(os.path.join(KIT, 'localization', 'fonts', 'es', name),
+                        os.path.join(src, 'javascript', 'kit', 'fonts', name))
     if language == 'ko':
         # Korean and Chinese are separate fixed-language packages. Loading both large
         # atlases could fragment the renderer's two 1024x4096 glyph shelves.
@@ -790,7 +821,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--language', type=normalize_language, choices=languages(), default='en',
-                        help='UI language; Korean also accepts ko-KR, ko-kr and ko_KR')
+                        help='UI language; Korean also accepts ko-KR, ko-kr and ko_KR, Spanish es-ES and es_ES')
     parser.add_argument('--preview-only', action='store_true', help='stage an offline preview without BMW SDK or installable archives')
     parser.add_argument('apps', nargs='*')
     args = parser.parse_args()

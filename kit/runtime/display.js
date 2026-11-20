@@ -88,6 +88,7 @@ const FULL = {
     src: { x: 12, y: 38, w: 1576, h: 482 },
 };
 const LAYOUTS = ['full', 'standard'];
+const CTL_RETRIES = 3, CTL_RETRY_MS = 30000;   // connecting again for the controller (_ctlRetry)
 
 // the HMI's page animation when a screen opens (the picture shows after it)
 const SHOW_DELAY_MS = 350;
@@ -187,6 +188,7 @@ class Display {
             if (this.gpu !== gpu) return;
             clearTimeout(this.frontTimer);
             if (st.front) {
+                this._ctlRetry(gpu);
                 if (this.blocked) { this.blocked = false; this.log.info('display: renderer has the app in front again'); this.lastWords = null; this._syncVisible(); this._grab(); this._hmiBar(); }
                 return;
             }
@@ -206,6 +208,22 @@ class Display {
         G.onLayerDrop((id) => { if (this.gpu) this.gpu.dropLayer(id); });
         gpu.connect();
         if (this.grabbing) gpu.grab(true);
+    }
+
+    /**
+     * In front without the controller: the renderer offers it only if no other renderer held it when this app
+     * connected (the Store's open while this app restarts after its update: seen on the car, the controller then
+     * never reached the app). Connected again, at most CTL_RETRIES times, CTL_RETRY_MS apart, so it asks again;
+     * a head unit whose HMI has no controller gate stays without after those. Never on iDrive 8: the Store's
+     * renderer there has no controller to offer (the gate is iDrive 7's HMI only), so every connection would go
+     * again, the picture gone for a moment and every resource uploaded again each time.
+     */
+    _ctlRetry(gpu) {
+        const now = Date.now();
+        if (geometryFor(gpu.screen) !== HMI7) return;
+        if (!gpu.native || !gpu.info || gpu.info.controller || !this.ownable() || (this.ctlTries || 0) >= CTL_RETRIES || now - (this.ctlTryT || 0) < CTL_RETRY_MS) return;
+        this.ctlTries = (this.ctlTries || 0) + 1; this.ctlTryT = now;
+        if (gpu.reconnect()) this.log.info('display: in front without the controller, connecting to the renderer again (' + this.ctlTries + '/' + CTL_RETRIES + ')');
     }
 
     /** the iDrive controller to this app alone while on (GPU renderer + mgu-inputgate.so needed) */
@@ -429,6 +447,20 @@ class Display {
      */
     _touch(phase, x, y) {
         const inside = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+        // the app takes a whole gesture (ctx.onTouch: a dial or a slider under the finger): every move goes to it, and no
+        // tap, scroll or target follows from it
+        if (this.own() && this.onTouch && !this.sheet && (phase === 1 || this.touchTaken)) {
+            if (phase === 1) {
+                let took = false;
+                try { took = !!this.onTouch(1, x, y); } catch (e) { this.log.error('touch', e); }
+                this.touchTaken = took;
+                if (took) { this.ownDown = null; this.downAt = null; return; }
+            } else {
+                try { this.onTouch(phase, x, y); } catch (e) { this.log.error('touch', e); }
+                if (phase === 3) this.touchTaken = false;
+                return;
+            }
+        }
         if (this.own()) {
             const pl = this.place, sx = x * pl.scale + pl.ox, sy = y * pl.scale + pl.oy;
             const bar = sy >= pl.h - this.barH() ? this.buttons().find((b) => sx >= b.x - this.barOff - pl.x && sx < b.x - this.barOff - pl.x + b.w) : null;
@@ -490,14 +522,17 @@ class Display {
         const logical = (q) => (r ? q : { i: q.i, x: (q.x - pl.ox) / pl.scale, y: (q.y - pl.oy) / pl.scale, w: q.w / pl.scale, h: q.h / pl.scale });
         this.tabs = (rects || []).map(logical);
         const W = pl.w, hx = HMI.left - pl.x, by = pl.h - this.barH();
+        // the header as far as the HMI's status corner shows through it (iDrive 7); iDrive 8 has none in the
+        // app's area: the whole row is the app's, as a tap there must not count as the HMI's (mgu-render closes)
+        const he = HMI.status.h ? this.headEnd : W;
         if (this.own()) {
             // header (tabs), page and the slim bar: the back column and the status corner stay the HMI's
-            this.gpu.claim([{ x: hx, y: 0, w: this.headEnd - hx, h: this.headH() }, { x: hx, y: this.headH(), w: W - hx, h: pl.h - this.headH() }].map(logical));
+            this.gpu.claim([{ x: hx, y: 0, w: he - hx, h: this.headH() }, { x: hx, y: this.headH(), w: W - hx, h: pl.h - this.headH() }].map(logical));
             return;
         }
         if (!this.onTab || this.tabs.length < 2) { this.gpu.claim([]); return; }
         this.gpu.claim(r ? [{ x: 0, y: 0, w: r.w, h: r.h }]
-            : [{ x: hx, y: 0, w: this.headEnd - hx, h: this.headH() }, { x: hx, y: this.headH(), w: W - hx, h: by - this.headH() }].map(logical));
+            : [{ x: hx, y: 0, w: he - hx, h: this.headH() }, { x: hx, y: this.headH(), w: W - hx, h: by - this.headH() }].map(logical));
     }
 
     /** GPU path gone (or off): the HMI's own image shows again - push a frame now. */
